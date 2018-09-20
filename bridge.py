@@ -40,11 +40,11 @@ onos_to_elastic = {"/links":"links",
 }
 
 elastic_index_to_schema = {
-"flows" : '{"properties":{"extract_timestamp":{"type":"date"},"flows":{"properties":{"appId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"bytes":{"type":"long"},"deviceId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"groupId":{"type":"long"},"id":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"isPermanent":{"type":"boolean"},"lastSeen":{"type":"long"},"life":{"type":"long"},"liveType":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"packets":{"type":"long"},"priority":{"type":"long"},"selector":{"properties":{"criteria":{"properties":{"ethType":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}}},"state":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"tableId":{"type":"long"},"timeout":{"type":"long"},"treatment":{"properties":{"clearDeferred":{"type":"boolean"},"instructions":{"properties":{"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}}}}}}}',
+"flows" : '{"properties":{"appId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"bytes":{"type":"long"},"deviceId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"extract_timestamp":{"type":"date"},"groupId":{"type":"long"},"id":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"isPermanent":{"type":"boolean"},"lastSeen":{"type":"long"},"life":{"type":"long"},"liveType":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"packets":{"type":"long"},"priority":{"type":"long"},"selector":{"properties":{"criteria":{"properties":{"ethType":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}}},"state":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"tableId":{"type":"long"},"timeout":{"type":"long"},"treatment":{"properties":{"clearDeferred":{"type":"boolean"},"instructions":{"properties":{"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}}}}}',
 
-"links" : '{"properties":{"links":{"properties":{"dst":{"properties":{"device":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"src":{"properties":{"device":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"state":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"extract_timestamp":{"type":"date"}}}',
+"links" : '{"properties":{"dst":{"properties":{"device":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"extract_timestamp":{"type":"date"},"src":{"properties":{"device":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"state":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}',
 
-"devices" : '{"properties":{"devices":{"properties":{"annotations":{"properties":{"channelId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"managementAddress":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"protocol":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"available":{"type":"boolean"},"chassisId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"driver":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"location":{"type":"geo_point"},"hw":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"id":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"mfr":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"role":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"serial":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"sw":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"extract_timestamp":{"type":"date"}}}'
+"devices" : '{"properties":{"annotations":{"properties":{"channelId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"managementAddress":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"protocol":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"available":{"type":"boolean"},"chassisId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"driver":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"extract_timestamp":{"type":"date"},"hw":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"id":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"location":{"type":"geo_point"},"mfr":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"role":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"serial":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"sw":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}'
 }
 
 
@@ -139,6 +139,7 @@ for index, schema in elastic_index_to_schema.iteritems():
 	    sys.exit(1)
 	logger.info("Successfully deployed schema for index: " + index)
 
+
 # now that elasticsearch and kibana services are running, and required indexes exist, scrape ONOS rest api every 30 seconds,
 # enrich data with extract timestamp, and post document to relevant index
 # The script may fail if elasticsearch or kibana services become unavailable.
@@ -159,28 +160,26 @@ while True:
         if proc.returncode <> 0:
             print err
         results_dict = json.loads(out)
+	
+	# Create an individual document for each child object returned in the response object.
+	for child_object in results_dict[index]:
+		# Enrich the data with a timestamp
+		child_object['extract_timestamp'] = extract_ts
+		# Perform resource specific enrichment
+		if index == "devices":
+			child_object['location'] = device_id_to_geohash[child_object['id']]
+		# Pretty print the results
+		logger.info("Succesfully retrived object from ONOS resource " + resource +":\n" + json.dumps(child_object, sort_keys=True, indent=4, separators=(',', ': ')))
 
-        # Enrich the data with a timestamp
-
-        results_dict['extract_timestamp'] = extract_ts
-
-        # Perform resource specific enrichment
-        if index == "devices":
-            for device in results_dict['devices']:
-                device['location'] = device_id_to_geohash[device['id']]
-        # Pretty print the results
-        
-        logger.info("Succesfully retrived ONOS resource:\n" + json.dumps(results_dict, sort_keys=True, indent=4, separators=(',', ': ')))
-
-        # now post the data to elasticsearch
-        proc = Popen("curl -X POST \"{0:s}:{1:s}/{2:s}/_doc/\" -H 'Content-Type: application/json' -d'".format(elastic["host"],elastic["port"],index) + json.dumps(results_dict) + "'", stdout=PIPE, stderr=PIPE, shell=True)
-        (out, err) = proc.communicate()
-        if proc.returncode <> 0:
-            print err
-	logger.info(out)
-	logger.info(err)
-        # Pretty print the results of the insertion into Elasticsearch
-        logger.info("Succesfully inserted ONOS resource into Elasticsearch:\n" + json.dumps(json.loads(out), sort_keys=True, indent=4, separators=(',', ': ')))
-        print "<" + '=' * 40
+		# now post the data to elasticsearch
+		proc = Popen("curl -X POST \"{0:s}:{1:s}/{2:s}/_doc/\" -H 'Content-Type: application/json' -d'".format(elastic["host"],elastic["port"],index) + json.dumps(child_object) + "'", stdout=PIPE, stderr=PIPE, shell=True)
+		(out, err) = proc.communicate()
+		if proc.returncode <> 0:
+		    print err
+		logger.info(out)
+		logger.info(err)
+		# Pretty print the results of the insertion into Elasticsearch
+		logger.info("Succesfully inserted document from ONOS resource " + resource + " into Elasticsearch:\n" + json.dumps(json.loads(out), sort_keys=True, indent=4, separators=(',', ': ')))
+		print "<" + '=' * 40
     wait_for_next_scrape(onos_poll_interval)
 
