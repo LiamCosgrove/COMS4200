@@ -20,7 +20,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--drop_all', help='Drops all existing elasticsearch indexes.')
 args = vars(parser.parse_args())
 
-
+#foo
 
 # Exported Kibana dashboard, import this into kibana
 kibana_dashboard = '''
@@ -32,57 +32,12 @@ kibana_dashboard = '''
       "title": "myDashboard",
       "hits": 0,
       "description": "",
-      "panelsJSON": "[
-  {
-    "embeddableConfig": {
-      "mapCenter": [
-        -27.497175340093158,
-        153.01096916198733
-      ],
-      "mapZoom": 16
-    },
-    "gridData": {
-      "h": 15,
-      "i": "1",
-      "w": 24,
-      "x": 0,
-      "y": 0
-    },
-    "id": "60115510-c470-11e8-ba05-ed8a23ede795",
-    "panelIndex": "1",
-    "type": "visualization",
-    "version": "6.4.1"
-  },
-  {
-    "embeddableConfig": {},
-    "gridData": {
-      "h": 15,
-      "i": "2",
-      "w": 24,
-      "x": 24,
-      "y": 0
-    },
-    "id": "5f6926d0-c473-11e8-ba05-ed8a23ede795",
-    "panelIndex": "2",
-    "type": "visualization",
-    "version": "6.4.1"
-  }
-]",
-      "optionsJSON": "{
-  "darkTheme": false,
-  "hidePanelTitles": false,
-  "useMargins": true
-}",
+      "panelsJSON": "[{\"embeddableConfig\":{\"mapCenter\":[-27.498317354732905,153.0108189582825],\"mapZoom\":15},\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"id\":\"60115510-c470-11e8-ba05-ed8a23ede795\",\"panelIndex\":\"1\",\"type\":\"visualization\",\"version\":\"6.4.1\"},{\"embeddableConfig\":{},\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":15,\"i\":\"2\"},\"id\":\"5f6926d0-c473-11e8-ba05-ed8a23ede795\",\"panelIndex\":\"2\",\"type\":\"visualization\",\"version\":\"6.4.1\"},{\"gridData\":{\"x\":0,\"y\":15,\"w\":24,\"h\":15,\"i\":\"3\"},\"version\":\"6.4.1\",\"panelIndex\":\"3\",\"type\":\"visualization\",\"id\":\"fe4de330-c482-11e8-ba05-ed8a23ede795\",\"embeddableConfig\":{}}]",
+      "optionsJSON": "{\"darkTheme\":false,\"hidePanelTitles\":false,\"useMargins\":true}",
       "version": 1,
       "timeRestore": false,
       "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{
-  "query": {
-    "language": "lucene",
-    "query": ""
-  },
-  "filter": []
-}"
+        "searchSourceJSON": "{\"query\":{\"language\":\"lucene\",\"query\":\"isPermanent:false\"},\"filter\":[{\"$state\":{\"store\":\"appState\"},\"meta\":{\"alias\":null,\"controlledBy\":\"1538286160977\",\"disabled\":false,\"index\":\"flows\",\"key\":\"time_passed_seconds\",\"negate\":false,\"params\":{\"gte\":0,\"lte\":900},\"type\":\"range\",\"value\":\"0 to 900\"},\"range\":{\"time_passed_seconds\":{\"gte\":0,\"lte\":900}}},{\"meta\":{\"index\":\"flows\",\"controlledBy\":\"1538285205885\",\"type\":\"phrase\",\"key\":\"deviceId.keyword\",\"value\":\"of:0000000000000002\",\"params\":{\"query\":\"of:0000000000000002\",\"type\":\"phrase\"},\"disabled\":false,\"negate\":false,\"alias\":null},\"query\":{\"match\":{\"deviceId.keyword\":{\"query\":\"of:0000000000000002\",\"type\":\"phrase\"}}},\"$state\":{\"store\":\"appState\"}}]}"
       }
     }
   }
