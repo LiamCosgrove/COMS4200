@@ -6,7 +6,7 @@ from subprocess import PIPE, Popen
 
 script_basename = os.path.basename(__file__)
 # Seconds to wait between ONOS Rest Api requests
-onos_poll_interval = 30
+onos_poll_interval = 6
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--drop_all', help='Drops all existing elasticsearch indexes.')
@@ -146,12 +146,16 @@ for index, schema in elastic_index_to_schema.iteritems():
 
 logger.info("About to begin polling ONOS REST API")
 ingest_start_time = int(time.time())
+# Store last snapshot of flow in dictionary.
+flows = {}
 while True:
     
     # request each resource in the onos_to_elastic mapping, and post to elastic index
     # Set the extract timestamp
     extract_ts = int(time.time())
     for resource, index in onos_to_elastic.iteritems():
+	if index != "flows":
+		continue
         print '=' * 40 + ">"
         logger.info("ONOS API Resource request:\n" + \
         "curl -H 'Accept: application/json' -u onos:rocks -X GET 'http://{0:s}:{1:s}/onos/v1{2:s}'".format(onos['host'], onos['port'], resource))
@@ -170,6 +174,25 @@ while True:
 		# Perform resource specific enrichment
 		if index == "devices":
 			child_object['location'] = device_id_to_geohash[child_object['id']]
+
+		# Even though a flow may not be permenenant and may only have a time to live of 10 seconds before it is removed from the flow tables, the flow if it is reinstalled
+		# will have the same flow ID. The heatmap view of aggregate flow rule bytes per device requires a field which gives bytes per poll increment rather than a total.
+		# This mean we be visualising the deltas, rather than the total, so we should enrich the data with a new field called bytes_delta for each flow.
+		# This field therefore will only be populated after we have recieved at least two snapshots of a flow.		
+		if index == "flows":
+			# If first time we have seen the flow rule
+			if child_object['id'] not in flows:
+				flows[child_object['id']] = child_object
+				logger.warning("helllooo")
+				print str(flows)
+			# If we have the last snapshot of the flow
+			else:
+				# Compute the delta, add it to the flow object
+				child_object['bytes_delta' + str(onos_poll_interval)] = child_object['bytes'] - flows[child_object['id']]['bytes']
+				# Update last known snapshot
+				flows[child_object['id']] = child_object
+				logger.warning("dfsdfsdfsfo")
+
 		# Pretty print the results
 		logger.info("Succesfully retrived object from ONOS resource " + resource +":\n" + json.dumps(child_object, sort_keys=True, indent=4, separators=(',', ': ')))
 
