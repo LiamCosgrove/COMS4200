@@ -1,14 +1,17 @@
 import sys, json, logging, subprocess, os, time, argparse, random
 from datetime import datetime as dt
 from subprocess import PIPE, Popen
-import pygeohash as pgh
+
 import math
+import requests
+import pygeohash as pgh
 
 # Constants
-
 script_basename = os.path.basename(__file__)
-# Seconds to wait between ONOS Rest Api requests
-onos_poll_interval = 6
+onos_poll_interval = 6 # Seconds to wait between ONOS Rest Api requests
+path_to_kibana_ddl = "./kibana_objects.json"
+path_to_elastic_index_schemas = "./elastic_index_schemas.json"
+
 
 # lat and longitude ranges for st lucia
 long_start = 153.006618
@@ -20,29 +23,11 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--drop_all', help='Drops all existing elasticsearch indexes.')
 args = vars(parser.parse_args())
 
-#foo
-
-# Exported Kibana dashboard, import this into kibana
-kibana_dashboard = '''
-[
-  {
-    "_id": "1fe5e290-c474-11e8-ba05-ed8a23ede795",
-    "_type": "dashboard",
-    "_source": {
-      "title": "myDashboard",
-      "hits": 0,
-      "description": "",
-      "panelsJSON": "[{\"embeddableConfig\":{\"mapCenter\":[-27.498317354732905,153.0108189582825],\"mapZoom\":15},\"gridData\":{\"x\":0,\"y\":0,\"w\":24,\"h\":15,\"i\":\"1\"},\"id\":\"60115510-c470-11e8-ba05-ed8a23ede795\",\"panelIndex\":\"1\",\"type\":\"visualization\",\"version\":\"6.4.1\"},{\"embeddableConfig\":{},\"gridData\":{\"x\":24,\"y\":0,\"w\":24,\"h\":15,\"i\":\"2\"},\"id\":\"5f6926d0-c473-11e8-ba05-ed8a23ede795\",\"panelIndex\":\"2\",\"type\":\"visualization\",\"version\":\"6.4.1\"},{\"gridData\":{\"x\":0,\"y\":15,\"w\":24,\"h\":15,\"i\":\"3\"},\"version\":\"6.4.1\",\"panelIndex\":\"3\",\"type\":\"visualization\",\"id\":\"fe4de330-c482-11e8-ba05-ed8a23ede795\",\"embeddableConfig\":{}}]",
-      "optionsJSON": "{\"darkTheme\":false,\"hidePanelTitles\":false,\"useMargins\":true}",
-      "version": 1,
-      "timeRestore": false,
-      "kibanaSavedObjectMeta": {
-        "searchSourceJSON": "{\"query\":{\"language\":\"lucene\",\"query\":\"isPermanent:false\"},\"filter\":[{\"$state\":{\"store\":\"appState\"},\"meta\":{\"alias\":null,\"controlledBy\":\"1538286160977\",\"disabled\":false,\"index\":\"flows\",\"key\":\"time_passed_seconds\",\"negate\":false,\"params\":{\"gte\":0,\"lte\":900},\"type\":\"range\",\"value\":\"0 to 900\"},\"range\":{\"time_passed_seconds\":{\"gte\":0,\"lte\":900}}},{\"meta\":{\"index\":\"flows\",\"controlledBy\":\"1538285205885\",\"type\":\"phrase\",\"key\":\"deviceId.keyword\",\"value\":\"of:0000000000000002\",\"params\":{\"query\":\"of:0000000000000002\",\"type\":\"phrase\"},\"disabled\":false,\"negate\":false,\"alias\":null},\"query\":{\"match\":{\"deviceId.keyword\":{\"query\":\"of:0000000000000002\",\"type\":\"phrase\"}}},\"$state\":{\"store\":\"appState\"}}]}"
-      }
-    }
-  }
-]
-'''
+with open(path_to_kibana_ddl, "r") as f:
+	kibana_ddl = f.read()
+kibana_ddl_dict = {}
+kibana_ddl_dict['objects'] = json.loads(kibana_ddl)
+kibana_ddl = json.dumps(kibana_ddl_dict)
 
 create_index ='''
 {
@@ -83,18 +68,15 @@ def get_coordinate_within_square(_lat_start, _lat_end, _long_start, _long_end, c
 	
 
 # ONOS end point to elasticsearch index.
-onos_to_elastic = {"/links":"links",
+onos_to_elastic = {
+"/links":"links",
 "/flows":"flows",
 "/devices":"devices"
 }
 
-elastic_index_to_schema = {
-"flows" : '{"properties":{"appId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"location":{"type":"geo_point"},"bytes":{"type":"long"},"deviceId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"extract_timestamp":{"type":"date"},"time_passed_seconds":{"type":"long"},"groupId":{"type":"long"},"id":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"isPermanent":{"type":"boolean"},"lastSeen":{"type":"long"},"life":{"type":"long"},"liveType":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"packets":{"type":"long"},"priority":{"type":"long"},"selector":{"properties":{"criteria":{"properties":{"ethType":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}}},"state":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"tableId":{"type":"long"},"timeout":{"type":"long"},"treatment":{"properties":{"clearDeferred":{"type":"boolean"},"instructions":{"properties":{"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}}}}}',
-
-"links" : '{"properties":{"dst":{"properties":{"device":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"extract_timestamp":{"type":"date"},"time_passed_seconds":{"type":"long"},"src":{"properties":{"device":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"port":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"state":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}',
-
-"devices" : '{"properties":{"annotations":{"properties":{"channelId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"managementAddress":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"protocol":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}},"available":{"type":"boolean"},"chassisId":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"driver":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"time_passed_seconds":{"type":"long"},"extract_timestamp":{"type":"date"},"hw":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"id":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"location":{"type":"geo_point"},"mfr":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"role":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"serial":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"sw":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}},"type":{"type":"text","fields":{"keyword":{"type":"keyword","ignore_above":256}}}}}'
-}
+with open(path_to_elastic_index_schemas, 'r') as f:
+	schemas = f.read()
+	elastic_index_to_schema = json.loads(schemas)
 
 elastic = {"name":"elasticsearch", "host":"localhost", "port":"9200"}
 kibana = {"name":"kibana", "host" : "localhost", "port" : "5601"}
@@ -121,25 +103,6 @@ if args['drop_all']:
             logger.error(err)
             sys.exit(1)
     logger.info("Succesfully dropped all existing Elasticsearch indexes.")
-
-# Create each Kibana index pattern.
-
-# Drop then create all required Kibana Index-patterns.
-logger.info("About to drop then create all required Kibana index-patterns.")
-for resource, index in onos_to_elastic.iteritems():
-    proc = Popen('curl -X DELETE "http://{0:s}:{1:s}/api/saved_objects/index-pattern/{2:s}"'.format(kibana['host'],kibana['port'], index) + \
-    " -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d' " + '{"attributes": { "title": "' + index + '"}}' + "'", stdout=PIPE, stderr=PIPE, shell=True)
-    (out, err) = proc.communicate()
-    if proc.returncode <> 0:
-        logger.error(err)
-        sys.exit(1)
-    proc = Popen('curl -X POST "http://{0:s}:{1:s}/api/saved_objects/index-pattern/{2:s}"'.format(kibana['host'],kibana['port'], index) + \
-    " -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d' " + '{"attributes": { "title": "' + index + '"}}' + "'", stdout=PIPE, stderr=PIPE, shell=True)
-    (out, err) = proc.communicate()
-    if proc.returncode <> 0:
-        logger.error(err)
-        sys.exit(1)
-logger.info("Succesfully installed all Kibana Index-patterns.")
 
 # This script will not respawn services, but may inform user that a service is not running.
 
@@ -182,14 +145,15 @@ for index, schema in elastic_index_to_schema.iteritems():
 	    sys.exit(1)
 	logger.info("Successfully deployed schema for index: " + index)
 
-'''
+logger.info("About to try and deploy kibana dashboard.")
+time.sleep(2)
 # Import dashboard into Kibana, overwrite any existing dashboard with same ID
 print 'curl -X POST "http://{0:s}:{1:s}/api/kibana/dashboards/import?force=true"'.format(kibana['host'],kibana['port']) + \
-" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d' " + kibana_dashboard + "'"
+" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d'\n" + kibana_ddl + "\n'"
 
 
-proc = Popen('curl -X POST "http://{0:s}:{1:s}/api/kibana/dashboards/import?force=true'.format(kibana['host'],kibana['port']) + \
-" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d' " + kibana_dashboard + "'", stdout=PIPE, stderr=PIPE, shell=True)
+proc = Popen('curl -X POST "http://{0:s}:{1:s}/api/kibana/dashboards/import?force=true"'.format(kibana['host'],kibana['port']) + \
+" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d'\n" + kibana_ddl + "\n'", stdout=PIPE, stderr=PIPE, shell=True)
 (out, err) = proc.communicate()
 if proc.returncode <> 0:
 	logger.error(err)
@@ -197,7 +161,7 @@ if proc.returncode <> 0:
 
 logger.info("Succesfully deployed Kibana Dashboard.")
 time.sleep(2)
-'''
+
 # now that elasticsearch and kibana services are running, and required indexes exist, scrape ONOS rest api every 30 seconds,
 # enrich data with extract timestamp, and post document to relevant index
 # The script may fail if elasticsearch or kibana services become unavailable.
