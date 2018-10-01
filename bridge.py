@@ -147,8 +147,6 @@ while True:
     # Set the extract timestamp
     extract_ts = int(time.time())
     for resource, elastic_index in onos_to_elastic.iteritems():
-	if elastic_index != "flows":
-		continue
         print '=' * 40 + ">"
 	url = "{0:s}/onos/v1{1:s}".format(onos_url, resource)
 	req = requests.get(url,  auth=HTTPBasicAuth('onos', 'rocks'))
@@ -157,7 +155,7 @@ while True:
 	# Create an individual document for each child object returned in the response object.
 	for child_object in results_dict[elastic_index]:
 		# Enrich the data with a timestamp
-		child_object['extract_timestamp'] = extract_ts
+		child_object['extract_timestamp'] = int(round(extract_ts * 1000))
 		# Enrich the data with a count since the start of the ingest process, used because Kibana makes it easier to filter by long range rather than date range??
 		child_object['time_passed_seconds'] = extract_ts - ingest_start_time
 
