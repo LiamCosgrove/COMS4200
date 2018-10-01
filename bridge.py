@@ -1,17 +1,28 @@
-import sys, json, logging, subprocess, os, time, argparse, random
+import sys
+import json
+import logging
+import subprocess
+import os
+import time
+import argparse
+import random
+import math
+import requests 
+import pygeohash as pgh
+
 from datetime import datetime as dt
 from subprocess import PIPE, Popen
 
-import math
-import requests
-import pygeohash as pgh
 
 # Constants
 script_basename = os.path.basename(__file__)
 onos_poll_interval = 6 # Seconds to wait between ONOS Rest Api requests
 path_to_kibana_ddl = "./kibana_objects.json"
 path_to_elastic_index_schemas = "./elastic_index_schemas.json"
-
+path_to_elastic_create_index = "./elastic_create_index.json"
+json_header = {"Content-Type" : "application/json"}
+kibana_header = {"kbn-xsrf" : "true"}
+kibana_header.update(json_header)
 
 # lat and longitude ranges for st lucia
 long_start = 153.006618
@@ -19,26 +30,41 @@ long_end = 153.016595
 lat_start = -27.494037
 lat_end = -27.501456
 
+# ONOS end point to elasticsearch index mapping.
+onos_to_elastic = {
+"/links":"links",
+"/flows":"flows",
+"/devices":"devices"
+}
+
+elastic = {"name":"elasticsearch", "host":"localhost", "port":"9200", "protocol":"http://"}
+kibana = {"name":"kibana", "host" : "localhost", "port" : "5601", "protocol":"http://"}
+onos = {"name":"onos", "host": "localhost", "port":"8181", "protocol":"http://"}
+
+elastic_url = "{0:s}{1:s}:{2:s}".format(elastic['protocol'], elastic['host'], elastic['port'])
+kibana_url = "{0:s}{1:s}:{2:s}".format(kibana['protocol'], kibana['host'], kibana['port'])
+onos_url = "{0:s}{1:s}:{2:s}".format(onos['protocol'], onos['host'], onos['port'])
+
+elastic_indexes = [elastic_index for onos_resource, elastic_index in onos_to_elastic.iteritems()]
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--drop_all', help='Drops all existing elasticsearch indexes.')
 args = vars(parser.parse_args())
 
 with open(path_to_kibana_ddl, "r") as f:
-	kibana_ddl = f.read()
+	kibana_ddl = json.loads(f.read())
 kibana_ddl_dict = {}
 kibana_ddl_dict['objects'] = json.loads(kibana_ddl)
 kibana_ddl = json.dumps(kibana_ddl_dict)
 
-create_index ='''
-{
-    "settings" : {
-           "index" : {
-        "number_of_shards" : 3, 
-        "number_of_replicas" : 2 
-        }
-    }
-}'''
+sys.exit(1)
 
+with open(path_to_elastic_create_index, "r") as f:
+	create_index = f.read()
+
+with open(path_to_elastic_index_schemas, 'r') as f:
+	schemas = f.read()
+	elastic_index_to_schema = json.loads(schemas)
 
 def wait_for_next_scrape(seconds):
     curr_secs = 0
@@ -48,6 +74,9 @@ def wait_for_next_scrape(seconds):
         sys.stdout.flush()
         time.sleep(1)
         curr_secs = curr_secs + 1
+
+def pdumps(_dict):
+	return json.dumps(_dict, sort_keys=True, indent=4, separators=(',', ': '))
 
 def get_coordinate_within_square(_lat_start, _lat_end, _long_start, _long_end, current_points):
 	generated_points = [(random.uniform(_lat_start, _lat_end), random.uniform(_long_start, _long_end)) for x in range(5)]
@@ -64,101 +93,69 @@ def get_coordinate_within_square(_lat_start, _lat_end, _long_start, _long_end, c
 		if dist_to_nearest_neighbour > biggest_dist_to_nearest_neighbour:
 			point_with_biggest_dist_to_nearest_neighbour = (point_lat, point_long)
 			biggest_dist_to_nearest_neighbour = dist_to_nearest_neighbour
-	return point_with_biggest_dist_to_nearest_neighbour			
-	
+	return point_with_biggest_dist_to_nearest_neighbour
 
-# ONOS end point to elasticsearch index.
-onos_to_elastic = {
-"/links":"links",
-"/flows":"flows",
-"/devices":"devices"
-}
+def drop_all_elastic_indexes(elastic_indexes, elastic_url):
+	for elastic_index in elastic_indexes:
+		url = "{0:s}/{1:s}".format(elastic_url, elastic_index)
+		req = requests.delete(url)
+		logger.info("Response content:\n" + pdumps(req.json()))
+	logger.info("Succesfully dropped all Elasticsearch indexes.")	
 
-with open(path_to_elastic_index_schemas, 'r') as f:
-	schemas = f.read()
-	elastic_index_to_schema = json.loads(schemas)
+def get_existing_elastic_indexes(_elastic_url):
+	existing_elastic_indexes = set()
+	req = requests.get("{0:s}/_cat/indices?".format(_elastic_url))
+	for record in req.content.strip().split('\n'):
+    		NAME_INDEX = 2
+    		existing_elastic_indexes.add(record.split()[NAME_INDEX])
+	return existing_elastic_indexes
 
-elastic = {"name":"elasticsearch", "host":"localhost", "port":"9200"}
-kibana = {"name":"kibana", "host" : "localhost", "port" : "5601"}
-onos = {"name":"onos", "host": "localhost", "port":"8181"}
-        
-# Initialise.
+def init_logger(logger_name):
+	logger = logging.getLogger(logger_name)
+	logger.setLevel(logging.DEBUG)
+	ch = logging.StreamHandler(sys.stdout)
+	ch.setLevel(logging.DEBUG)
+	formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)-8s %(message)s', "%H:%M:%S")
+	ch.setFormatter(formatter)
+	logger.addHandler(ch)
+	return logger
 
 # Configure logging.
-
-logger = logging.getLogger(script_basename)
-logger.setLevel(logging.DEBUG)
-ch = logging.StreamHandler(sys.stdout)
-ch.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s %(name)s %(levelname)-8s %(message)s', "%H:%M:%S")
-ch.setFormatter(formatter)
-logger.addHandler(ch)
+logger = init_logger(script_basename)
 logger.info("Script starting.")
 
 if args['drop_all']:
-    for resource, index in onos_to_elastic.iteritems():
-        proc = Popen("curl -X DELETE '{0:s}:{1:s}/{2:s}'".format(elastic['host'], elastic['port'], index), stdout=PIPE, stderr=PIPE, shell=True)
-        (out, err) = proc.communicate()
-        if proc.returncode <> 0:
-            logger.error(err)
-            sys.exit(1)
-    logger.info("Succesfully dropped all existing Elasticsearch indexes.")
-
-# This script will not respawn services, but may inform user that a service is not running.
+	drop_all_elastic_indexes(elastic_indexes, elastic_url)
 
 # Initialise elasticsearch indexes.
+existing_elastic_indexes = get_existing_elastic_indexes(elastic_url)
 
-existing_elastic_indexes = set()
-logger.info("About to list the existing elasticsearch indexes.")
-proc = Popen("curl -X GET '{0:s}:{1:s}/_cat/indices?'".format(elastic['host'], elastic['port']), stdout=PIPE, stderr=PIPE, shell=True)
-(out, err) = proc.communicate()
-if proc.returncode <> 0:
-    pass
-logger.info("Existing elasticsearch indexes:\n" + out)
-for record in out.strip().split('\n'):
-    NAME_INDEX = 2
-    existing_elastic_indexes.add(record.split()[NAME_INDEX])
+logger.info("About to create elastic indexes if they do not exist in Elasticsearch.")
 
-# if the elastic index is not in the set of existing elastic indexes, then create it
-for resource, index in onos_to_elastic.iteritems():
-    if index not in existing_elastic_indexes:
-        logger.info("Index " + index + " does not exist in elasticsearch.")
-        print 'curl -X PUT "' + elastic["host"] + ":" + elastic["port"] + "/" + index + "\" -H 'Content-Type: application/json' -d'" + create_index + "\n'"
-        proc = Popen('curl -X PUT "' + elastic["host"] + ":" + elastic["port"] + "/" + index + "\" -H 'Content-Type: application/json' -d'" + create_index + "\n'",\
-        stdout=PIPE, stderr=PIPE, shell=True)
-        (out, err) = proc.communicate()
-        if proc.returncode <> 0:
-            logger.critical("Failed to create elastic search index:" + index + ".")
-            raise RuntimeError(err)
-        logger.info("Successfully created elasticsearch index " + index + ".")
-
+for elastic_index in elastic_indexes:
+    if elastic_index not in existing_elastic_indexes:
+        logger.info("Index {0:s} does not exist in elasticsearch.".format(elastic_index))
+	url = "{0:s}/{1:s}".format(elastic_url, elastic_index)
+	req = requests.put(url, data = create_index, headers = json_header)
+	logger.info(pdumps({"content":req.content, "headers" : str(req.headers), "data" : create_index}))
 
 # Deploy the schemas for each index.
-for index, schema in elastic_index_to_schema.iteritems():
-	proc = Popen('curl -X PUT "{0:s}:{1:s}/'.format(elastic['host'], elastic['port']) + index + '/_mapping/_doc" -H \'Content-Type: application/json\' -d\'\n' + schema + "\n'", stdout=PIPE, stderr=PIPE, shell=True)
-	(out, err) = proc.communicate()
-	logger.info(err)
-	logger.info(out)
-	if proc.returncode <> 0 or "error" in err:
-	    logger.error("Failed to deploy schema for index:" + index)
-	    logger.error(err)
-	    sys.exit(1)
-	logger.info("Successfully deployed schema for index: " + index)
+for elastic_index, schema in elastic_index_to_schema.iteritems():
+	url = "{0:s}/{1:s}/_mapping/_doc".format(elastic_url, elastic_index)
+	req = requests.put(url, data = schema, headers = json_header)
+	logger.info(pdumps({"content":req.content, "headers" : str(req.headers), "data" : schema}))
 
-logger.info("About to try and deploy kibana dashboard.")
+logger.info("About to deploy Kibana dashboard.")
 time.sleep(2)
+
 # Import dashboard into Kibana, overwrite any existing dashboard with same ID
-print 'curl -X POST "http://{0:s}:{1:s}/api/kibana/dashboards/import?force=true"'.format(kibana['host'],kibana['port']) + \
-" -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d'\n" + kibana_ddl + "\n'"
-
-
 proc = Popen('curl -X POST "http://{0:s}:{1:s}/api/kibana/dashboards/import?force=true"'.format(kibana['host'],kibana['port']) + \
 " -H 'kbn-xsrf: true' -H 'Content-Type: application/json' -d'\n" + kibana_ddl + "\n'", stdout=PIPE, stderr=PIPE, shell=True)
 (out, err) = proc.communicate()
 if proc.returncode <> 0:
 	logger.error(err)
 	sys.exit(1)
-
+print out
 logger.info("Succesfully deployed Kibana Dashboard.")
 time.sleep(2)
 
@@ -173,7 +170,6 @@ flows = {}
 current_locations = set()
 device_locations = {}
 while True:
-    
     # request each resource in the onos_to_elastic mapping, and post to elastic index
     # Set the extract timestamp
     extract_ts = int(time.time())
