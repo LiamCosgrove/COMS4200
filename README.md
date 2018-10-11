@@ -51,4 +51,4 @@ Set the 'timelion:es:timefield' config value to 'extract_timestamp'.
 
 ![alt text](https://github.com/LiamCosgrove/COMS4200/blob/master/images/kibana_setup/kibana7.png)
 
-You are now ready to run a Mininet network emulation, the Python script will periodically ingest data from ONOS REST API and insert into Elasticsearch Indexes. The Kibana dashboard will present this data.
+You are now ready to run a Mininet network emulation (with ONOS as the controller), the Python script will periodically ingest data from ONOS REST API and insert into Elasticsearch Indexes. The Kibana dashboard will present this data.
